@@ -27,6 +27,7 @@ interface CreateTaskModalProps {
     priority: string;
     due_date?: string;
     assignee_id?: string;
+    assignee_ids?: string[];
     labels: string[];
   }) => Promise<void>;
 }
@@ -48,7 +49,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
   const [createAnother, setCreateAnother] = useState(false);
@@ -81,12 +82,20 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     setLabels(labels.filter((l) => l !== tag));
   };
 
+  const handleToggleAssignee = (profileId: string) => {
+    if (assigneeIds.includes(profileId)) {
+      setAssigneeIds(assigneeIds.filter((id) => id !== profileId));
+    } else {
+      setAssigneeIds([...assigneeIds, profileId]);
+    }
+  };
+
   const resetForm = () => {
     setSummary('');
     setDescription('');
     setPriority('medium');
     setDueDate('');
-    setAssigneeId('');
+    setAssigneeIds([]);
     setLabels([]);
     setShowDatePicker(false);
     setShowAssigneePicker(false);
@@ -105,7 +114,8 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         description: description.trim(),
         priority,
         due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
-        assignee_id: assigneeId || undefined,
+        assignee_id: assigneeIds.length > 0 ? assigneeIds[0] : undefined,
+        assignee_ids: assigneeIds,
         labels,
       });
 
@@ -181,8 +191,6 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       setShowSlashMenu(false);
     }
   };
-
-  const selectedAssignee = profiles.find((p) => p.id === assigneeId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
@@ -329,49 +337,67 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               )}
             </div>
 
-            {/* Assignee / Automatic Pill */}
+            {/* Multi-Assignee Pill */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowAssigneePicker(!showAssigneePicker)}
                 className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  selectedAssignee
+                  assigneeIds.length > 0
                     ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800'
                     : 'bg-zinc-50 dark:bg-zinc-800/70 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700'
                 }`}
               >
                 <User className="w-3.5 h-3.5 text-zinc-400" />
-                <span>{selectedAssignee ? selectedAssignee.full_name : 'Automatic'}</span>
+                <span>
+                  {assigneeIds.length === 0
+                    ? 'Assignees'
+                    : assigneeIds.length === 1
+                    ? profiles.find((p) => p.id === assigneeIds[0])?.full_name || '1 Assignee'
+                    : `${assigneeIds.length} Assignees`}
+                </span>
               </button>
 
               {showAssigneePicker && (
-                <div className="absolute left-0 bottom-10 z-20 w-48 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl p-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAssigneeId('');
-                      setShowAssigneePicker(false);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg"
-                  >
-                    Automatic (Unassigned)
-                  </button>
-                  {profiles.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setAssigneeId(p.id);
-                        setShowAssigneePicker(false);
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg flex items-center gap-2"
-                    >
-                      <div className="w-4 h-4 rounded-full bg-indigo-200 dark:bg-indigo-900 flex items-center justify-center text-[9px] font-bold">
-                        {p.full_name[0]}
-                      </div>
-                      <span className="truncate">{p.full_name}</span>
-                    </button>
-                  ))}
+                <div className="absolute left-0 bottom-10 z-20 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl p-1.5 text-xs max-h-56 overflow-y-auto">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    Select Assignees ({assigneeIds.length})
+                  </div>
+                  {profiles.map((p) => {
+                    const isSelected = assigneeIds.includes(p.id);
+                    const color = p.color || '#4F46E5';
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleToggleAssignee(p.id)}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                            : 'hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {p.avatar_url ? (
+                            <img src={p.avatar_url} alt={p.full_name} className="w-4 h-4 rounded-full object-cover" />
+                          ) : (
+                            <div
+                              className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                              style={{ backgroundColor: color }}
+                            >
+                              {p.full_name[0]}
+                            </div>
+                          )}
+                          <span className="truncate text-xs">{p.full_name}</span>
+                        </div>
+                        <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${
+                          isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-zinc-300 dark:border-zinc-600'
+                        }`}>
+                          {isSelected && '✓'}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -9,6 +9,7 @@ import { AuthModal } from './components/AuthModal';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { StatsDrawer } from './components/StatsDrawer';
 import { FilterBar } from './components/FilterBar';
+import { TeamModal } from './components/TeamModal';
 import {
   Plus,
   Sun,
@@ -27,6 +28,7 @@ export function App() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isStatsDrawerOpen, setIsStatsDrawerOpen] = useState(false);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>(
     localStorage.getItem('kanban_user_email') || 'Guest'
@@ -197,6 +199,7 @@ export function App() {
     priority: string;
     due_date?: string;
     assignee_id?: string;
+    assignee_ids?: string[];
     labels: string[];
   }) => {
     // Locate the "To Do" column or default to the first column
@@ -216,6 +219,7 @@ export function App() {
       priority: taskData.priority,
       due_date: taskData.due_date,
       assignee_id: taskData.assignee_id,
+      assignee_ids: taskData.assignee_ids,
       labels: taskData.labels,
     });
 
@@ -227,6 +231,24 @@ export function App() {
         return c;
       })
     );
+  };
+
+  // Team Member Management Handlers
+  const handleAddTeamMember = async (memberData: {
+    full_name: string;
+    email?: string;
+    avatar_url?: string;
+    color?: string;
+  }) => {
+    const created = await api.createProfile(memberData);
+    setProfiles((prev) => [...prev, created]);
+  };
+
+  const handleRemoveTeamMember = async (id: string) => {
+    await api.deleteProfile(id);
+    setProfiles((prev) => prev.filter((p) => p.id !== id));
+    // Refresh board to reflect removed profile association
+    loadBoardData();
   };
 
   // Add Task inline
@@ -497,6 +519,36 @@ export function App() {
             <span>Create Task</span>
           </button>
 
+          {/* Team Pill & Avatar Cluster */}
+          <button
+            onClick={() => setIsTeamModalOpen(true)}
+            className="h-9 px-3 bg-black/[0.03] dark:bg-white/[0.05] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-zinc-700 dark:text-zinc-200 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer"
+            title="Manage Team Members"
+          >
+            <div className="flex items-center -space-x-1.5">
+              {profiles.slice(0, 3).map((p) => {
+                const color = p.color || '#4F46E5';
+                return p.avatar_url ? (
+                  <img
+                    key={p.id}
+                    src={p.avatar_url}
+                    alt={p.full_name}
+                    className="w-5 h-5 rounded-full object-cover ring-2 ring-white dark:ring-zinc-900"
+                  />
+                ) : (
+                  <div
+                    key={p.id}
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-white dark:ring-zinc-900"
+                    style={{ backgroundColor: color }}
+                  >
+                    {p.full_name.charAt(0).toUpperCase()}
+                  </div>
+                );
+              })}
+            </div>
+            <span className="hidden sm:inline font-semibold">Team ({profiles.length})</span>
+          </button>
+
           <button
             onClick={() => setIsStatsDrawerOpen(true)}
             className="h-9 px-3.5 bg-black/[0.03] dark:bg-white/[0.05] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-zinc-700 dark:text-zinc-200 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -668,6 +720,15 @@ export function App() {
         onToggleSubtask={handleToggleSubtask}
         onDeleteSubtask={handleDeleteSubtask}
         onAddComment={handleAddComment}
+      />
+
+      {/* Team Management Modal */}
+      <TeamModal
+        isOpen={isTeamModalOpen}
+        onClose={() => setIsTeamModalOpen(false)}
+        profiles={profiles}
+        onAddMember={handleAddTeamMember}
+        onRemoveMember={handleRemoveTeamMember}
       />
 
       {/* Supabase Auth Modal */}

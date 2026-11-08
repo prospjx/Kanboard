@@ -3,6 +3,7 @@ export interface Profile {
   email: string;
   full_name: string;
   avatar_url: string;
+  color?: string;
 }
 
 export interface Subtask {
@@ -43,6 +44,8 @@ export interface Task {
   user_id: string;
   assignee_id?: string;
   assignee?: Profile;
+  assignees?: Profile[];
+  assignee_ids?: string[];
   title: string;
   description: string;
   priority: Priority;

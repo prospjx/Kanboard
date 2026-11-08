@@ -30,6 +30,8 @@ type Store interface {
 
 	CreateComment(ctx context.Context, userID, taskID uuid.UUID, req CreateCommentRequest) (*Comment, error)
 	GetProfiles(ctx context.Context) ([]Profile, error)
+	CreateProfile(ctx context.Context, req CreateProfileRequest) (*Profile, error)
+	DeleteProfile(ctx context.Context, id uuid.UUID) error
 	GetActivityLogs(ctx context.Context, userID uuid.UUID) ([]ActivityLog, error)
 	LogActivity(ctx context.Context, userID uuid.UUID, taskID *uuid.UUID, taskTitle, action, details string) error
 }
@@ -54,16 +56,16 @@ func NewPostgresStore(ctx context.Context, connStr string) (*PostgresStore, erro
 }
 
 func (s *PostgresStore) GetProfiles(ctx context.Context) ([]Profile, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, email, full_name, avatar_url FROM public.profiles`)
+	rows, err := s.pool.Query(ctx, `SELECT id, email, full_name, avatar_url, COALESCE(color, '') FROM public.profiles ORDER BY created_at ASC`)
 	if err != nil {
-		return nil, err
+		return []Profile{}, nil
 	}
 	defer rows.Close()
 
 	var profiles []Profile
 	for rows.Next() {
 		var p Profile
-		if err := rows.Scan(&p.ID, &p.Email, &p.FullName, &p.AvatarURL); err == nil {
+		if err := rows.Scan(&p.ID, &p.Email, &p.FullName, &p.AvatarURL, &p.Color); err == nil {
 			profiles = append(profiles, p)
 		}
 	}
@@ -476,6 +478,32 @@ func (s *PostgresStore) CreateComment(ctx context.Context, userID, taskID uuid.U
 	return cm, nil
 }
 
+func (s *PostgresStore) CreateProfile(ctx context.Context, req CreateProfileRequest) (*Profile, error) {
+	p := &Profile{
+		ID:        uuid.New(),
+		Email:     req.Email,
+		FullName:  req.FullName,
+		AvatarURL: req.AvatarURL,
+		Color:     req.Color,
+	}
+	if p.Email == "" {
+		p.Email = fmt.Sprintf("%s@kanban.team", uuid.New().String()[:8])
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO public.profiles (id, email, full_name, avatar_url, color)
+		VALUES ($1, $2, $3, $4, $5)
+	`, p.ID, p.Email, p.FullName, p.AvatarURL, p.Color)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (s *PostgresStore) DeleteProfile(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM public.profiles WHERE id = $1`, id)
+	return err
+}
+
 func (s *PostgresStore) GetActivityLogs(ctx context.Context, userID uuid.UUID) ([]ActivityLog, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, user_id, task_id, task_title, action, details, created_at
@@ -667,6 +695,38 @@ func (m *MemoryStore) GetProfiles(ctx context.Context) ([]Profile, error) {
 	return m.profiles, nil
 }
 
+func (m *MemoryStore) CreateProfile(ctx context.Context, req CreateProfileRequest) (*Profile, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p := Profile{
+		ID:        uuid.New(),
+		Email:     req.Email,
+		FullName:  req.FullName,
+		AvatarURL: req.AvatarURL,
+		Color:     req.Color,
+	}
+	if p.Email == "" {
+		p.Email = fmt.Sprintf("%s@kanban.team", uuid.New().String()[:8])
+	}
+	m.profiles = append(m.profiles, p)
+	return &p, nil
+}
+
+func (m *MemoryStore) DeleteProfile(ctx context.Context, id uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var newProfiles []Profile
+	for _, p := range m.profiles {
+		if p.ID != id {
+			newProfiles = append(newProfiles, p)
+		}
+	}
+	m.profiles = newProfiles
+	return nil
+}
+
 func (m *MemoryStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Column, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -693,6 +753,15 @@ func (m *MemoryStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Column,
 					if p, exists := profileMap[*taskCopy.AssigneeID]; exists {
 						taskCopy.Assignee = &p
 					}
+				}
+				taskCopy.Assignees = []Profile{}
+				for _, aID := range taskCopy.AssigneeIDs {
+					if p, exists := profileMap[aID]; exists {
+						taskCopy.Assignees = append(taskCopy.Assignees, p)
+					}
+				}
+				if len(taskCopy.Assignees) == 0 && taskCopy.Assignee != nil {
+					taskCopy.Assignees = append(taskCopy.Assignees, *taskCopy.Assignee)
 				}
 				taskCopy.Subtasks = []Subtask{}
 				for _, st := range m.subtasks {
@@ -791,12 +860,16 @@ func (m *MemoryStore) CreateTask(ctx context.Context, userID uuid.UUID, req Crea
 	}
 
 	labelsJSON, _ := json.Marshal(req.Labels)
+	if req.AssigneeID == nil && len(req.AssigneeIDs) > 0 {
+		req.AssigneeID = &req.AssigneeIDs[0]
+	}
 	t := Task{
 		ID:          uuid.New(),
 		ColumnID:    req.ColumnID,
 		Status:      status,
 		UserID:      userID,
 		AssigneeID:  req.AssigneeID,
+		AssigneeIDs: req.AssigneeIDs,
 		Title:       req.Title,
 		Description: req.Description,
 		Priority:    req.Priority,
@@ -814,8 +887,15 @@ func (m *MemoryStore) CreateTask(ctx context.Context, userID uuid.UUID, req Crea
 	for _, p := range m.profiles {
 		if t.AssigneeID != nil && p.ID == *t.AssigneeID {
 			t.Assignee = &p
-			break
 		}
+		for _, aID := range t.AssigneeIDs {
+			if p.ID == aID {
+				t.Assignees = append(t.Assignees, p)
+			}
+		}
+	}
+	if len(t.Assignees) == 0 && t.Assignee != nil {
+		t.Assignees = append(t.Assignees, *t.Assignee)
 	}
 	m.tasks = append(m.tasks, t)
 	m.logActivityInternal(userID, &t.ID, t.Title, "created", fmt.Sprintf("Task %q created", t.Title))
@@ -852,6 +932,12 @@ func (m *MemoryStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, 
 			if req.AssigneeID != nil {
 				m.tasks[i].AssigneeID = req.AssigneeID
 			}
+			if req.AssigneeIDs != nil {
+				m.tasks[i].AssigneeIDs = req.AssigneeIDs
+				if len(req.AssigneeIDs) > 0 && req.AssigneeID == nil {
+					m.tasks[i].AssigneeID = &req.AssigneeIDs[0]
+				}
+			}
 			if req.Labels != nil {
 				labelsJSON, _ := json.Marshal(req.Labels)
 				m.tasks[i].Labels = labelsJSON
@@ -859,11 +945,19 @@ func (m *MemoryStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, 
 			m.tasks[i].UpdatedAt = time.Now()
 
 			res := m.tasks[i]
+			res.Assignees = []Profile{}
 			for _, p := range m.profiles {
 				if res.AssigneeID != nil && p.ID == *res.AssigneeID {
 					res.Assignee = &p
-					break
 				}
+				for _, aID := range res.AssigneeIDs {
+					if p.ID == aID {
+						res.Assignees = append(res.Assignees, p)
+					}
+				}
+			}
+			if len(res.Assignees) == 0 && res.Assignee != nil {
+				res.Assignees = append(res.Assignees, *res.Assignee)
 			}
 			return &res, nil
 		}

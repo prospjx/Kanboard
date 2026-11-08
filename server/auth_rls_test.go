@@ -169,3 +169,61 @@ func TestActivityLogging(t *testing.T) {
 		t.Fatalf("unexpected activity log content: %+v", logs[0])
 	}
 }
+
+// TestTeamMembersAndMultiAssignees verifies:
+// 1. Adding a new team member with custom name, avatar, and color
+// 2. Assigning multiple team members to a task
+// 3. Ensuring assigned profiles are resolved correctly
+func TestTeamMembersAndMultiAssignees(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	userID := uuid.New()
+
+	// 1. Create team member
+	member, err := store.CreateProfile(ctx, CreateProfileRequest{
+		FullName:  "Diana Prince",
+		Email:     "diana@themyscira.io",
+		AvatarURL: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120",
+		Color:     "#8B5CF6",
+	})
+	if err != nil {
+		t.Fatalf("failed to create team member: %v", err)
+	}
+	if member.FullName != "Diana Prince" || member.Color != "#8B5CF6" {
+		t.Fatalf("unexpected member attributes: %+v", member)
+	}
+
+	// 2. Fetch profiles list
+	profiles, err := store.GetProfiles(ctx)
+	if err != nil {
+		t.Fatalf("failed to get profiles: %v", err)
+	}
+	found := false
+	for _, p := range profiles {
+		if p.ID == member.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("newly created member %v not found in profiles list", member.ID)
+	}
+
+	// 3. Create a task with multiple assignees
+	colID := store.columns[0].ID
+	assignee1 := profiles[0].ID
+	assignee2 := member.ID
+	task, err := store.CreateTask(ctx, userID, CreateTaskRequest{
+		ColumnID:    colID,
+		Title:       "Multi-Assignee Task",
+		Priority:    "urgent",
+		AssigneeIDs: []uuid.UUID{assignee1, assignee2},
+	})
+	if err != nil {
+		t.Fatalf("failed to create task with multi-assignees: %v", err)
+	}
+
+	if len(task.Assignees) != 2 {
+		t.Fatalf("expected 2 assignees on task, got: %d", len(task.Assignees))
+	}
+}

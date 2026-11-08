@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+const API_BASE = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.origin ? '/api' : 'http://localhost:8080/api');
 
 // Get current auth token (from Supabase session or dev mock user)
 function getAuthHeader(): Record<string, string> {
@@ -13,6 +13,25 @@ export const api = {
   async getProfiles() {
     const res = await fetch(`${API_BASE}/profiles`, { headers: getAuthHeader() });
     if (!res.ok) throw new Error('Failed to load profiles');
+    return res.json();
+  },
+
+  async createProfile(data: { full_name: string; email?: string; avatar_url?: string; color?: string }) {
+    const res = await fetch(`${API_BASE}/profiles`, {
+      method: 'POST',
+      headers: getAuthHeader(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to create team member');
+    return res.json();
+  },
+
+  async deleteProfile(profileId: string) {
+    const res = await fetch(`${API_BASE}/profiles/${profileId}`, {
+      method: 'DELETE',
+      headers: getAuthHeader(),
+    });
+    if (!res.ok) throw new Error('Failed to delete team member');
     return res.json();
   },
 
@@ -58,6 +77,7 @@ export const api = {
     priority?: string;
     due_date?: string;
     assignee_id?: string;
+    assignee_ids?: string[];
     labels?: string[];
   }) {
     const res = await fetch(`${API_BASE}/tasks`, {

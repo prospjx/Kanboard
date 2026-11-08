@@ -62,8 +62,10 @@ func main() {
 	r.Route("/api", func(api chi.Router) {
 		api.Use(AuthMiddleware(supabaseURL, jwtSecret))
 
-		// Profiles
+		// Profiles / Team
 		api.Get("/profiles", server.handleGetProfiles)
+		api.Post("/profiles", server.handleCreateProfile)
+		api.Delete("/profiles/{profileID}", server.handleDeleteProfile)
 
 		// Board (Columns & Nested Tasks)
 		api.Get("/board", server.handleGetBoard)
@@ -116,6 +118,38 @@ func (s *Server) handleGetProfiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, profiles)
+}
+
+func (s *Server) handleCreateProfile(w http.ResponseWriter, r *http.Request) {
+	var req CreateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.FullName == "" {
+		writeError(w, http.StatusBadRequest, "Name is required")
+		return
+	}
+	profile, err := s.store.CreateProfile(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, profile)
+}
+
+func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
+	profileIDStr := chi.URLParam(r, "profileID")
+	profileID, err := uuid.Parse(profileIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid profile ID")
+		return
+	}
+	if err := s.store.DeleteProfile(r.Context(), profileID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Profile removed"})
 }
 
 func (s *Server) handleGetBoard(w http.ResponseWriter, r *http.Request) {

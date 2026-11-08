@@ -149,25 +149,55 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
               )}
             </div>
 
-            {/* Assignee Avatar */}
-            <div>
-              {task.assignee ? (
-                task.assignee.avatar_url ? (
-                  <img
-                    src={task.assignee.avatar_url}
-                    alt={task.assignee.full_name}
-                    className="w-5 h-5 rounded-full object-cover ring-1 ring-zinc-200 dark:ring-zinc-700"
-                    title={task.assignee.full_name}
-                  />
-                ) : (
-                  <div
-                    className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-[10px] font-bold text-indigo-700 dark:text-indigo-300 ring-1 ring-zinc-200 dark:ring-zinc-700"
-                    title={task.assignee.full_name}
-                  >
-                    {task.assignee.full_name[0]}
-                  </div>
-                )
-              ) : null}
+            {/* Multi-Assignee Avatar Stack */}
+            <div className="flex items-center -space-x-1.5 overflow-hidden">
+              {(() => {
+                const assignees = task.assignees && task.assignees.length > 0
+                  ? task.assignees
+                  : task.assignee
+                  ? [task.assignee]
+                  : [];
+
+                if (assignees.length === 0) return null;
+
+                const displayAssignees = assignees.slice(0, 3);
+                const extraCount = assignees.length - 3;
+
+                return (
+                  <>
+                    {displayAssignees.map((a, idx) => {
+                      const color = a.color || '#4F46E5';
+                      return a.avatar_url ? (
+                        <img
+                          key={a.id || idx}
+                          src={a.avatar_url}
+                          alt={a.full_name}
+                          className="w-5 h-5 rounded-full object-cover ring-2 ring-white dark:ring-zinc-800"
+                          title={a.full_name}
+                        />
+                      ) : (
+                        <div
+                          key={a.id || idx}
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-white dark:ring-zinc-800"
+                          style={{ backgroundColor: color }}
+                          title={a.full_name}
+                        >
+                          {a.full_name.charAt(0).toUpperCase()}
+                        </div>
+                      );
+                    })}
+
+                    {extraCount > 0 && (
+                      <div
+                        className="w-5 h-5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 flex items-center justify-center text-[9px] font-bold ring-2 ring-white dark:ring-zinc-800"
+                        title={`${extraCount} more assignees`}
+                      >
+                        +{extraCount}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

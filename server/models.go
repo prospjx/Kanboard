@@ -86,26 +86,28 @@ type UpdateColumnRequest struct {
 }
 
 type CreateTaskRequest struct {
-	ColumnID    uuid.UUID  `json:"column_id,omitempty"`
-	Status      string     `json:"status,omitempty"` // todo, in_progress, in_review, done
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Priority    string     `json:"priority"`
-	DueDate     *time.Time `json:"due_date,omitempty"`
-	AssigneeID  *uuid.UUID `json:"assignee_id,omitempty"`
-	Labels      []string   `json:"labels"`
+	ColumnID    uuid.UUID   `json:"column_id,omitempty"`
+	Status      string      `json:"status,omitempty"` // todo, in_progress, in_review, done
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	Priority    string      `json:"priority"`
+	DueDate     *time.Time  `json:"due_date,omitempty"`
+	AssigneeID  *uuid.UUID  `json:"assignee_id,omitempty"`
+	AssigneeIDs []uuid.UUID `json:"assignee_ids,omitempty"`
+	Labels      []string    `json:"labels"`
 }
 
 type UpdateTaskRequest struct {
-	ColumnID    *uuid.UUID `json:"column_id,omitempty"`
-	Status      *string    `json:"status,omitempty"`
-	Title       *string    `json:"title,omitempty"`
-	Description *string    `json:"description,omitempty"`
-	Priority    *string    `json:"priority,omitempty"`
-	DueDate     *time.Time `json:"due_date,omitempty"`
-	Position    *float64   `json:"position,omitempty"`
-	AssigneeID  *uuid.UUID `json:"assignee_id,omitempty"`
-	Labels      []string   `json:"labels,omitempty"`
+	ColumnID    *uuid.UUID  `json:"column_id,omitempty"`
+	Status      *string     `json:"status,omitempty"`
+	Title       *string     `json:"title,omitempty"`
+	Description *string     `json:"description,omitempty"`
+	Priority    *string     `json:"priority,omitempty"`
+	DueDate     *time.Time  `json:"due_date,omitempty"`
+	Position    *float64    `json:"position,omitempty"`
+	AssigneeID  *uuid.UUID  `json:"assignee_id,omitempty"`
+	AssigneeIDs []uuid.UUID `json:"assignee_ids,omitempty"`
+	Labels      []string    `json:"labels,omitempty"`
 }
 
 type ReorderTaskRequest struct {
@@ -125,5 +127,12 @@ type UpdateSubtaskRequest struct {
 
 type CreateCommentRequest struct {
 	Content string `json:"content"`
+}
+
+type CreateProfileRequest struct {
+	FullName  string `json:"full_name"`
+	Email     string `json:"email,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	Color     string `json:"color,omitempty"`
 }
 
