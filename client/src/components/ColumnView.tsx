@@ -146,7 +146,7 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
                 rows={2}
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
-                placeholder="What needs to be done?"
+                placeholder="Summary"
                 className="w-full p-2.5 pr-6 bg-black/[0.02] dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded-lg text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:border-[#1A56DB] resize-none"
               />
               {/* Active dot indicator on the right */}
