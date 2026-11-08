@@ -227,3 +227,138 @@ func TestTeamMembersAndMultiAssignees(t *testing.T) {
 		t.Fatalf("expected 2 assignees on task, got: %d", len(task.Assignees))
 	}
 }
+
+// TestTaskFilteringAndLabels verifies:
+// 1. Attaching multiple labels to tasks
+// 2. Querying and ensuring labels persist
+func TestTaskFilteringAndLabels(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	userID := uuid.New()
+
+	colID := store.columns[0].ID
+	labels := []string{"Bug", "Urgent", "Frontend"}
+	task, err := store.CreateTask(ctx, userID, CreateTaskRequest{
+		ColumnID: colID,
+		Title:    "Issue with button alignment",
+		Priority: "high",
+		Labels:   labels,
+	})
+	if err != nil {
+		t.Fatalf("failed to create task with labels: %v", err)
+	}
+
+	if len(task.Labels) == 0 {
+		t.Fatalf("expected task labels to be populated")
+	}
+
+	// Update task labels
+	newLabels := []string{"Bug", "Resolved"}
+	updated, err := store.UpdateTask(ctx, userID, task.ID, UpdateTaskRequest{
+		Labels: newLabels,
+	})
+	if err != nil {
+		t.Fatalf("failed to update task labels: %v", err)
+	}
+
+	if string(updated.Labels) == "" {
+		t.Fatalf("expected updated task to maintain labels JSON")
+	}
+}
+
+// TestColumnReordering verifies reordering tasks across columns
+func TestColumnReordering(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	userID := uuid.New()
+
+	col1ID := store.columns[0].ID
+	col2ID := store.columns[1].ID
+
+	task, err := store.CreateTask(ctx, userID, CreateTaskRequest{
+		ColumnID: col1ID,
+		Title:    "Task to Move",
+		Priority: "medium",
+	})
+	if err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	// Move task from Column 1 to Column 2
+	err = store.ReorderTask(ctx, userID, ReorderTaskRequest{
+		TaskID:      task.ID,
+		NewColumnID: col2ID,
+		NewPosition: 500,
+	})
+	if err != nil {
+		t.Fatalf("failed to reorder task: %v", err)
+	}
+
+	board, err := store.GetBoard(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to get board: %v", err)
+	}
+
+	// Verify task now lives in col2
+	foundInCol2 := false
+	for _, c := range board {
+		if c.ID == col2ID {
+			for _, item := range c.Tasks {
+				if item.ID == task.ID {
+					foundInCol2 = true
+					break
+				}
+			}
+		}
+	}
+	if !foundInCol2 {
+		t.Fatalf("expected task to be present in Column 2 after move")
+	}
+}
+
+// TestCommentsChronology verifies comments are created and ordered chronologically
+func TestCommentsChronology(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	userID := uuid.New()
+
+	colID := store.columns[0].ID
+	task, err := store.CreateTask(ctx, userID, CreateTaskRequest{
+		ColumnID: colID,
+		Title:    "Task with Comments",
+		Priority: "low",
+	})
+	if err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	c1, err := store.CreateComment(ctx, userID, task.ID, CreateCommentRequest{Content: "First comment"})
+	if err != nil {
+		t.Fatalf("failed to add comment 1: %v", err)
+	}
+	c2, err := store.CreateComment(ctx, userID, task.ID, CreateCommentRequest{Content: "Second comment"})
+	if err != nil {
+		t.Fatalf("failed to add comment 2: %v", err)
+	}
+
+	board, err := store.GetBoard(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to retrieve board: %v", err)
+	}
+
+	var foundComments []Comment
+	for _, col := range board {
+		for _, item := range col.Tasks {
+			if item.ID == task.ID {
+				foundComments = item.Comments
+			}
+		}
+	}
+
+	if len(foundComments) != 2 {
+		t.Fatalf("expected 2 comments on task, got: %d", len(foundComments))
+	}
+	if foundComments[0].ID != c1.ID || foundComments[1].ID != c2.ID {
+		t.Fatalf("comments are not in chronological order")
+	}
+}

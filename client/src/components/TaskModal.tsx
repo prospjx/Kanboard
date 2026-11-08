@@ -46,14 +46,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   onDeleteSubtask,
   onAddComment,
 }) => {
-  if (!task) return null;
-
   const [activeTab, setActiveTab] = useState<'comments' | 'history'>('comments');
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description);
-  const [priority, setPriority] = useState(task.priority);
-  const [dueDate, setDueDate] = useState(task.due_date ? task.due_date.split('T')[0] : '');
+  const [title, setTitle] = useState(task?.title || '');
+  const [description, setDescription] = useState(task?.description || '');
+  const [priority, setPriority] = useState(task?.priority || 'medium');
+  const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.split('T')[0] : '');
   const [assigneeIds, setAssigneeIds] = useState<string[]>(() => {
+    if (!task) return [];
     if (task.assignee_ids && task.assignee_ids.length > 0) return task.assignee_ids;
     if (task.assignee_id) return [task.assignee_id];
     return [];
@@ -61,7 +60,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [newComment, setNewComment] = useState('');
   const [newTag, setNewTag] = useState('');
-  const [labels, setLabels] = useState<string[]>(Array.isArray(task.labels) ? task.labels : []);
+  const [labels, setLabels] = useState<string[]>(Array.isArray(task?.labels) ? task!.labels : []);
+
+  // Sync internal state when opened task changes
+  React.useEffect(() => {
+    if (task) {
+      setTitle(task.title);
+      setDescription(task.description);
+      setPriority(task.priority);
+      setDueDate(task.due_date ? task.due_date.split('T')[0] : '');
+      setAssigneeIds(
+        task.assignee_ids && task.assignee_ids.length > 0
+          ? task.assignee_ids
+          : task.assignee_id
+          ? [task.assignee_id]
+          : []
+      );
+      setLabels(Array.isArray(task.labels) ? task.labels : []);
+    }
+  }, [task]);
+
+  if (!task) return null;
 
   const handleTitleBlur = () => {
     if (title.trim() && title !== task.title) {

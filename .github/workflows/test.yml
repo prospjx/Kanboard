@@ -55,6 +55,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Run linter checks
+        run: npm run lint
+
       - name: Run TypeScript typecheck & Vite build
         run: npm run build
 
