@@ -7,7 +7,8 @@
     },
     "server": {
       "root": "server",
-      "runtime": "go"
+      "runtime": "go",
+      "entrypoint": "main.go"
     }
   },
   "rewrites": [
