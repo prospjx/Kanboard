@@ -23,11 +23,23 @@ export interface Comment {
   created_at: string;
 }
 
+export interface ActivityLog {
+  id: string;
+  user_id: string;
+  task_id?: string;
+  task_title: string;
+  action: 'created' | 'moved' | 'updated' | 'commented' | 'completed';
+  details: string;
+  created_at: string;
+}
+
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 
 export interface Task {
   id: string;
   column_id: string;
+  status: TaskStatus;
   user_id: string;
   assignee_id?: string;
   assignee?: Profile;

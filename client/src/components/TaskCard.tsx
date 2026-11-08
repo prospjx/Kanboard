@@ -27,13 +27,28 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
   const hasSubtasks = totalSubtasks > 0;
   const progressPercent = hasSubtasks ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
 
-  // Due date styling
+  // Enhanced Due date styling & urgency calculation
   let dueDateText = '';
-  let isOverdue = false;
+  let dueDateBadgeStyle = 'text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-700/60 border-zinc-200 dark:border-zinc-700';
+
   if (task.due_date) {
     const d = new Date(task.due_date);
-    dueDateText = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    isOverdue = d.getTime() < Date.now();
+    const nowTime = Date.now();
+    const diffDays = Math.ceil((d.getTime() - nowTime) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      const daysAgo = Math.abs(diffDays);
+      dueDateText = daysAgo === 1 ? 'Overdue 1d' : `Overdue ${daysAgo}d`;
+      dueDateBadgeStyle = 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/70 border-rose-300 dark:border-rose-800 font-bold';
+    } else if (diffDays === 0) {
+      dueDateText = 'Due Today';
+      dueDateBadgeStyle = 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 border-amber-300 dark:border-amber-800 font-semibold';
+    } else if (diffDays === 1) {
+      dueDateText = 'Due Tomorrow';
+      dueDateBadgeStyle = 'text-amber-600 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800';
+    } else {
+      dueDateText = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
   }
 
   // Parse labels safely
@@ -116,17 +131,13 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
 
           {/* Footer: Date, Comments count, Assignee Avatar */}
           <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-700/50 text-[11px] text-zinc-400">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {dueDateText && (
                 <span
-                  className={`flex items-center gap-1 font-medium ${
-                    isOverdue
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-zinc-500 dark:text-zinc-400'
-                  }`}
+                  className={`px-2 py-0.5 rounded-md border flex items-center gap-1 text-[10px] ${dueDateBadgeStyle}`}
                 >
-                  <Calendar className="w-3 h-3" />
-                  {dueDateText}
+                  <Calendar className="w-2.5 h-2.5 shrink-0" />
+                  <span>{dueDateText}</span>
                 </span>
               )}
 

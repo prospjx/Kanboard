@@ -139,3 +139,33 @@ func TestSubtaskChecklistProgress(t *testing.T) {
 		t.Fatalf("expected subtask to be completed, got: %v", updatedSt1)
 	}
 }
+
+// TestActivityLogging verifies that board mutations generate audit logs.
+func TestActivityLogging(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	userID := uuid.New()
+
+	colID := store.columns[0].ID
+	task, err := store.CreateTask(ctx, userID, CreateTaskRequest{
+		ColumnID: colID,
+		Title:    "Audit Activity Test",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	logs, err := store.GetActivityLogs(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to get activity logs: %v", err)
+	}
+
+	if len(logs) == 0 {
+		t.Fatalf("expected at least 1 activity log entry for task creation, got 0")
+	}
+
+	if logs[0].Action != "created" || logs[0].TaskID == nil || *logs[0].TaskID != task.ID {
+		t.Fatalf("unexpected activity log content: %+v", logs[0])
+	}
+}

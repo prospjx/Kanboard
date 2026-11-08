@@ -51,10 +51,11 @@ CREATE TABLE IF NOT EXISTS public.columns (
 -- 3. Tasks Table
 CREATE TABLE IF NOT EXISTS public.tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    column_id UUID NOT NULL REFERENCES public.columns(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'in_review', 'done')),
+    column_id UUID REFERENCES public.columns(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     assignee_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    title TEXT NOT NULL,
     description TEXT DEFAULT '',
     priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
     due_date TIMESTAMPTZ,
@@ -84,11 +85,23 @@ CREATE TABLE IF NOT EXISTS public.comments (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 6. Activity Logs Table (for board history timeline)
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    task_id UUID REFERENCES public.tasks(id) ON DELETE SET NULL,
+    task_title TEXT NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes for fast ordering and queries
 CREATE INDEX IF NOT EXISTS idx_columns_user_pos ON public.columns(user_id, position);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_pos ON public.tasks(user_id, column_id, position);
 CREATE INDEX IF NOT EXISTS idx_subtasks_user ON public.subtasks(user_id, task_id);
 CREATE INDEX IF NOT EXISTS idx_comments_task_created ON public.comments(task_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON public.activity_logs(user_id, created_at DESC);
 
 -- ===================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -189,3 +202,16 @@ CREATE POLICY "Users can only insert comments on tasks they own"
     ON public.comments FOR INSERT
     TO authenticated
     WITH CHECK (auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.tasks WHERE tasks.id = comments.task_id AND tasks.user_id = auth.uid()));
+
+-- Activity Logs: Strict per-user isolation
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can only select their own activity logs"
+    ON public.activity_logs FOR SELECT
+    TO authenticated
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can only insert their own activity logs"
+    ON public.activity_logs FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = user_id);

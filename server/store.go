@@ -30,6 +30,8 @@ type Store interface {
 
 	CreateComment(ctx context.Context, userID, taskID uuid.UUID, req CreateCommentRequest) (*Comment, error)
 	GetProfiles(ctx context.Context) ([]Profile, error)
+	GetActivityLogs(ctx context.Context, userID uuid.UUID) ([]ActivityLog, error)
+	LogActivity(ctx context.Context, userID uuid.UUID, taskID *uuid.UUID, taskTitle, action, details string) error
 }
 
 // -------------------------------------------------------------
@@ -113,7 +115,7 @@ func (s *PostgresStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Colum
 	// 2. Fetch only tasks owned by this user
 	taskRows, err := s.pool.Query(ctx, `
 		SELECT 
-			t.id, t.column_id, t.user_id, t.assignee_id, t.title, t.description, 
+			t.id, t.column_id, COALESCE(t.status, 'todo'), t.user_id, t.assignee_id, t.title, t.description, 
 			t.priority, t.due_date, t.position, t.labels, t.created_at, t.updated_at,
 			p.id, p.email, p.full_name, p.avatar_url
 		FROM public.tasks t
@@ -135,7 +137,7 @@ func (s *PostgresStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Colum
 		var pEmail, pName, pAvatar *string
 
 		if err := taskRows.Scan(
-			&t.ID, &t.ColumnID, &t.UserID, &t.AssigneeID, &t.Title, &t.Description,
+			&t.ID, &t.ColumnID, &t.Status, &t.UserID, &t.AssigneeID, &t.Title, &t.Description,
 			&t.Priority, &t.DueDate, &t.Position, &t.Labels, &t.CreatedAt, &t.UpdatedAt,
 			&pID, &pEmail, &pName, &pAvatar,
 		); err != nil {
@@ -279,9 +281,15 @@ func (s *PostgresStore) DeleteColumn(ctx context.Context, userID, columnID uuid.
 }
 
 func (s *PostgresStore) CreateTask(ctx context.Context, userID uuid.UUID, req CreateTaskRequest) (*Task, error) {
+	status := req.Status
+	if status == "" {
+		status = "todo"
+	}
+
 	task := &Task{
 		ID:          uuid.New(),
 		ColumnID:    req.ColumnID,
+		Status:      status,
 		UserID:      userID,
 		AssigneeID:  req.AssigneeID,
 		Title:       req.Title,
@@ -302,9 +310,9 @@ func (s *PostgresStore) CreateTask(ctx context.Context, userID uuid.UUID, req Cr
 	task.Labels = labelsJSON
 
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO public.tasks (id, column_id, user_id, assignee_id, title, description, priority, due_date, position, labels, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-	`, task.ID, task.ColumnID, task.UserID, task.AssigneeID, task.Title, task.Description, task.Priority, task.DueDate, task.Position, task.Labels, task.CreatedAt, task.UpdatedAt)
+		INSERT INTO public.tasks (id, column_id, status, user_id, assignee_id, title, description, priority, due_date, position, labels, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`, task.ID, task.ColumnID, task.Status, task.UserID, task.AssigneeID, task.Title, task.Description, task.Priority, task.DueDate, task.Position, task.Labels, task.CreatedAt, task.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -329,6 +337,11 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID
 	if req.ColumnID != nil {
 		query += fmt.Sprintf(`, column_id = $%d`, argIdx)
 		args = append(args, *req.ColumnID)
+		argIdx++
+	}
+	if req.Status != nil {
+		query += fmt.Sprintf(`, status = $%d`, argIdx)
+		args = append(args, *req.Status)
 		argIdx++
 	}
 	if req.Title != nil {
@@ -368,12 +381,12 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID
 		argIdx++
 	}
 
-	query += fmt.Sprintf(` WHERE id = $%d AND user_id = $%d RETURNING id, column_id, user_id, assignee_id, title, description, priority, due_date, position, labels, created_at, updated_at`, argIdx, argIdx+1)
+	query += fmt.Sprintf(` WHERE id = $%d AND user_id = $%d RETURNING id, column_id, status, user_id, assignee_id, title, description, priority, due_date, position, labels, created_at, updated_at`, argIdx, argIdx+1)
 	args = append(args, taskID, userID)
 
 	var t Task
 	err := s.pool.QueryRow(ctx, query, args...).Scan(
-		&t.ID, &t.ColumnID, &t.UserID, &t.AssigneeID, &t.Title, &t.Description,
+		&t.ID, &t.ColumnID, &t.Status, &t.UserID, &t.AssigneeID, &t.Title, &t.Description,
 		&t.Priority, &t.DueDate, &t.Position, &t.Labels, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
@@ -459,7 +472,39 @@ func (s *PostgresStore) CreateComment(ctx context.Context, userID, taskID uuid.U
 	_ = s.pool.QueryRow(ctx, `SELECT id, email, full_name, avatar_url FROM public.profiles WHERE id = $1`, userID).
 		Scan(&p.ID, &p.Email, &p.FullName, &p.AvatarURL)
 	cm.User = &p
+	_ = s.LogActivity(ctx, userID, &taskID, "Task", "commented", fmt.Sprintf("Added comment: %q", req.Content))
 	return cm, nil
+}
+
+func (s *PostgresStore) GetActivityLogs(ctx context.Context, userID uuid.UUID) ([]ActivityLog, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, user_id, task_id, task_title, action, details, created_at
+		FROM public.activity_logs
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		LIMIT 50
+	`, userID)
+	if err != nil {
+		return []ActivityLog{}, nil
+	}
+	defer rows.Close()
+
+	var logs []ActivityLog
+	for rows.Next() {
+		var log ActivityLog
+		if err := rows.Scan(&log.ID, &log.UserID, &log.TaskID, &log.TaskTitle, &log.Action, &log.Details, &log.CreatedAt); err == nil {
+			logs = append(logs, log)
+		}
+	}
+	return logs, nil
+}
+
+func (s *PostgresStore) LogActivity(ctx context.Context, userID uuid.UUID, taskID *uuid.UUID, taskTitle, action, details string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO public.activity_logs (id, user_id, task_id, task_title, action, details, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+	`, uuid.New(), userID, taskID, taskTitle, action, details)
+	return err
 }
 
 // -------------------------------------------------------------
@@ -468,12 +513,13 @@ func (s *PostgresStore) CreateComment(ctx context.Context, userID, taskID uuid.U
 // -------------------------------------------------------------
 
 type MemoryStore struct {
-	mu       sync.RWMutex
-	columns  []Column
-	tasks    []Task
-	subtasks []Subtask
-	comments []Comment
-	profiles []Profile
+	mu           sync.RWMutex
+	columns      []Column
+	tasks        []Task
+	subtasks     []Subtask
+	comments     []Comment
+	profiles     []Profile
+	activityLogs []ActivityLog
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -514,6 +560,7 @@ func NewMemoryStore() *MemoryStore {
 			{
 				ID:          t1ID,
 				ColumnID:    col1ID,
+				Status:      "todo",
 				UserID:      aliceID,
 				AssigneeID:  &aliceID,
 				Title:       "Design responsive Kanban card components",
@@ -528,6 +575,7 @@ func NewMemoryStore() *MemoryStore {
 			{
 				ID:          t2ID,
 				ColumnID:    col2ID,
+				Status:      "in_progress",
 				UserID:      bobID,
 				AssigneeID:  &bobID,
 				Title:       "Implement JWT auth verification in Go backend",
@@ -542,6 +590,7 @@ func NewMemoryStore() *MemoryStore {
 			{
 				ID:          t3ID,
 				ColumnID:    col4ID,
+				Status:      "done",
 				UserID:      charlieID,
 				AssigneeID:  &charlieID,
 				Title:       "Set up Supabase tables & RLS policies",
@@ -562,8 +611,54 @@ func NewMemoryStore() *MemoryStore {
 		comments: []Comment{
 			{ID: uuid.New(), TaskID: t1ID, UserID: aliceID, Content: "Tailwind colors and Lucide icons look great!", CreatedAt: now.Add(-2 * time.Hour)},
 		},
+		activityLogs: []ActivityLog{
+			{ID: uuid.New(), UserID: aliceID, TaskID: &t1ID, TaskTitle: "Design responsive Kanban card components", Action: "created", Details: "Task created in 'To Do'", CreatedAt: now.Add(-3 * time.Hour)},
+			{ID: uuid.New(), UserID: bobID, TaskID: &t2ID, TaskTitle: "Implement JWT auth verification in Go backend", Action: "moved", Details: "Moved task to 'In Progress'", CreatedAt: now.Add(-1 * time.Hour)},
+			{ID: uuid.New(), UserID: charlieID, TaskID: &t3ID, TaskTitle: "Set up Supabase tables & RLS policies", Action: "completed", Details: "Marked task as Done", CreatedAt: now.Add(-30 * time.Minute)},
+		},
 	}
 	return ms
+}
+
+func (m *MemoryStore) GetActivityLogs(ctx context.Context, userID uuid.UUID) ([]ActivityLog, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var logs []ActivityLog
+	for _, l := range m.activityLogs {
+		if l.UserID == userID || l.UserID == uuid.Nil || userID == uuid.Nil {
+			logs = append(logs, l)
+		}
+	}
+	// Return newest first
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].CreatedAt.After(logs[j].CreatedAt)
+	})
+	return logs, nil
+}
+
+func (m *MemoryStore) logActivityInternal(userID uuid.UUID, taskID *uuid.UUID, taskTitle, action, details string) {
+	entry := ActivityLog{
+		ID:        uuid.New(),
+		UserID:    userID,
+		TaskID:    taskID,
+		TaskTitle: taskTitle,
+		Action:    action,
+		Details:   details,
+		CreatedAt: time.Now(),
+	}
+	m.activityLogs = append([]ActivityLog{entry}, m.activityLogs...)
+	if len(m.activityLogs) > 100 {
+		m.activityLogs = m.activityLogs[:100]
+	}
+}
+
+func (m *MemoryStore) LogActivity(ctx context.Context, userID uuid.UUID, taskID *uuid.UUID, taskTitle, action, details string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.logActivityInternal(userID, taskID, taskTitle, action, details)
+	return nil
 }
 
 func (m *MemoryStore) GetProfiles(ctx context.Context) ([]Profile, error) {
@@ -690,10 +785,16 @@ func (m *MemoryStore) CreateTask(ctx context.Context, userID uuid.UUID, req Crea
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	status := req.Status
+	if status == "" {
+		status = "todo"
+	}
+
 	labelsJSON, _ := json.Marshal(req.Labels)
 	t := Task{
 		ID:          uuid.New(),
 		ColumnID:    req.ColumnID,
+		Status:      status,
 		UserID:      userID,
 		AssigneeID:  req.AssigneeID,
 		Title:       req.Title,
@@ -717,6 +818,7 @@ func (m *MemoryStore) CreateTask(ctx context.Context, userID uuid.UUID, req Crea
 		}
 	}
 	m.tasks = append(m.tasks, t)
+	m.logActivityInternal(userID, &t.ID, t.Title, "created", fmt.Sprintf("Task %q created", t.Title))
 	return &t, nil
 }
 
@@ -728,6 +830,9 @@ func (m *MemoryStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, 
 		if m.tasks[i].ID == taskID && (m.tasks[i].UserID == userID || m.tasks[i].UserID == uuid.Nil) {
 			if req.ColumnID != nil {
 				m.tasks[i].ColumnID = *req.ColumnID
+			}
+			if req.Status != nil {
+				m.tasks[i].Status = *req.Status
 			}
 			if req.Title != nil {
 				m.tasks[i].Title = *req.Title
@@ -775,6 +880,7 @@ func (m *MemoryStore) ReorderTask(ctx context.Context, userID uuid.UUID, req Reo
 			m.tasks[i].ColumnID = req.NewColumnID
 			m.tasks[i].Position = req.NewPosition
 			m.tasks[i].UpdatedAt = time.Now()
+			m.logActivityInternal(userID, &req.TaskID, m.tasks[i].Title, "moved", fmt.Sprintf("Moved task %q", m.tasks[i].Title))
 			return nil
 		}
 	}
@@ -862,6 +968,7 @@ func (m *MemoryStore) CreateComment(ctx context.Context, userID, taskID uuid.UUI
 		}
 	}
 	m.comments = append(m.comments, cm)
+	m.logActivityInternal(userID, &taskID, "Task", "commented", fmt.Sprintf("Added comment: %q", req.Content))
 	return &cm, nil
 }
 

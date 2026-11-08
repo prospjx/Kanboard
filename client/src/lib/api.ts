@@ -136,5 +136,11 @@ export const api = {
     if (!res.ok) throw new Error('Failed to create comment');
     return res.json();
   },
+
+  async getActivityLogs() {
+    const res = await fetch(`${API_BASE}/activity`, { headers: getAuthHeader() });
+    if (!res.ok) throw new Error('Failed to load activity logs');
+    return res.json();
+  },
 };
 

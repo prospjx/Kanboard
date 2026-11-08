@@ -42,9 +42,20 @@ type Comment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type ActivityLog struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	TaskID    *uuid.UUID `json:"task_id,omitempty"`
+	TaskTitle string     `json:"task_title"`
+	Action    string     `json:"action"` // created, moved, updated, commented
+	Details   string     `json:"details"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
 type Task struct {
 	ID          uuid.UUID       `json:"id"`
 	ColumnID    uuid.UUID       `json:"column_id"`
+	Status      string          `json:"status"` // todo, in_progress, in_review, done
 	UserID      uuid.UUID       `json:"user_id"`
 	AssigneeID  *uuid.UUID      `json:"assignee_id,omitempty"`
 	Assignee    *Profile        `json:"assignee,omitempty"`
@@ -72,7 +83,8 @@ type UpdateColumnRequest struct {
 }
 
 type CreateTaskRequest struct {
-	ColumnID    uuid.UUID  `json:"column_id"`
+	ColumnID    uuid.UUID  `json:"column_id,omitempty"`
+	Status      string     `json:"status,omitempty"` // todo, in_progress, in_review, done
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
 	Priority    string     `json:"priority"`
@@ -83,6 +95,7 @@ type CreateTaskRequest struct {
 
 type UpdateTaskRequest struct {
 	ColumnID    *uuid.UUID `json:"column_id,omitempty"`
+	Status      *string    `json:"status,omitempty"`
 	Title       *string    `json:"title,omitempty"`
 	Description *string    `json:"description,omitempty"`
 	Priority    *string    `json:"priority,omitempty"`

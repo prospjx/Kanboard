@@ -86,6 +86,9 @@ func main() {
 
 		// Comment operations
 		api.Post("/tasks/{taskID}/comments", server.handleCreateComment)
+
+		// Activity logs
+		api.Get("/activity", server.handleGetActivityLogs)
 	})
 
 	fmt.Printf("🚀 Kanban Go Backend running on http://localhost:%s\n", port)
@@ -331,5 +334,15 @@ func (s *Server) handleCreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, cm)
+}
+
+func (s *Server) handleGetActivityLogs(w http.ResponseWriter, r *http.Request) {
+	userID := GetUserID(r.Context())
+	logs, err := s.store.GetActivityLogs(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, logs)
 }
 
