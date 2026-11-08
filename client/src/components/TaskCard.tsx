@@ -1,0 +1,167 @@
+import React from 'react';
+import { Draggable } from '@hello-pangea/dnd';
+import type { Task } from '../types';
+import {
+  Calendar,
+  CheckSquare,
+  MessageSquare,
+  AlertCircle,
+} from 'lucide-react';
+
+interface TaskCardProps {
+  task: Task;
+  index: number;
+  onClick: () => void;
+}
+
+const PRIORITY_BADGES: Record<string, { label: string; style: string }> = {
+  low: { label: 'Low', style: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
+  medium: { label: 'Med', style: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border-blue-200 dark:border-blue-800' },
+  high: { label: 'High', style: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border-amber-200 dark:border-amber-800' },
+  urgent: { label: 'Urgent', style: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200 dark:border-rose-800 font-bold' },
+};
+
+export const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
+  const completedSubtasks = (task.subtasks || []).filter((s) => s.is_completed).length;
+  const totalSubtasks = (task.subtasks || []).length;
+  const hasSubtasks = totalSubtasks > 0;
+  const progressPercent = hasSubtasks ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
+
+  // Due date styling
+  let dueDateText = '';
+  let isOverdue = false;
+  if (task.due_date) {
+    const d = new Date(task.due_date);
+    dueDateText = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    isOverdue = d.getTime() < Date.now();
+  }
+
+  // Parse labels safely
+  let labelsList: string[] = [];
+  if (Array.isArray(task.labels)) {
+    labelsList = task.labels;
+  } else if (typeof task.labels === 'string') {
+    try {
+      labelsList = JSON.parse(task.labels);
+    } catch {
+      labelsList = [];
+    }
+  }
+
+  return (
+    <Draggable draggableId={task.id} index={index}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          onClick={onClick}
+          className={`group bg-white dark:bg-zinc-800/90 border rounded-xl p-3.5 mb-2.5 transition-all shadow-xs hover:shadow-md cursor-pointer select-none ${
+            snapshot.isDragging
+              ? 'ring-2 ring-indigo-500 shadow-xl border-indigo-300 dark:border-indigo-600 rotate-1'
+              : 'border-zinc-200/80 dark:border-zinc-700/60 hover:border-indigo-300 dark:hover:border-indigo-700'
+          }`}
+        >
+          {/* Top row: Labels & Priority */}
+          <div className="flex items-center justify-between gap-1 mb-2">
+            <div className="flex flex-wrap gap-1 max-w-[70%]">
+              {labelsList.slice(0, 3).map((lbl, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900"
+                >
+                  {lbl}
+                </span>
+              ))}
+              {labelsList.length > 3 && (
+                <span className="text-[10px] text-zinc-400">+{labelsList.length - 3}</span>
+              )}
+            </div>
+
+            {task.priority && (
+              <span
+                className={`px-2 py-0.5 text-[10px] rounded-md border flex items-center gap-1 ${
+                  PRIORITY_BADGES[task.priority]?.style || ''
+                }`}
+              >
+                <AlertCircle className="w-2.5 h-2.5" />
+                {PRIORITY_BADGES[task.priority]?.label || task.priority}
+              </span>
+            )}
+          </div>
+
+          {/* Title */}
+          <h4 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 leading-snug mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+            {task.title}
+          </h4>
+
+          {/* Subtask checklist progress preview */}
+          {hasSubtasks && (
+            <div className="mb-2.5">
+              <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">
+                <span className="flex items-center gap-1">
+                  <CheckSquare className="w-3 h-3" />
+                  {completedSubtasks}/{totalSubtasks}
+                </span>
+                <span>{progressPercent}%</span>
+              </div>
+              <div className="w-full bg-zinc-100 dark:bg-zinc-700/70 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-indigo-500 h-full transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Footer: Date, Comments count, Assignee Avatar */}
+          <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-700/50 text-[11px] text-zinc-400">
+            <div className="flex items-center gap-3">
+              {dueDateText && (
+                <span
+                  className={`flex items-center gap-1 font-medium ${
+                    isOverdue
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-zinc-500 dark:text-zinc-400'
+                  }`}
+                >
+                  <Calendar className="w-3 h-3" />
+                  {dueDateText}
+                </span>
+              )}
+
+              {(task.comments || []).length > 0 && (
+                <span className="flex items-center gap-1 text-zinc-400">
+                  <MessageSquare className="w-3 h-3" />
+                  {task.comments.length}
+                </span>
+              )}
+            </div>
+
+            {/* Assignee Avatar */}
+            <div>
+              {task.assignee ? (
+                task.assignee.avatar_url ? (
+                  <img
+                    src={task.assignee.avatar_url}
+                    alt={task.assignee.full_name}
+                    className="w-5 h-5 rounded-full object-cover ring-1 ring-zinc-200 dark:ring-zinc-700"
+                    title={task.assignee.full_name}
+                  />
+                ) : (
+                  <div
+                    className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-[10px] font-bold text-indigo-700 dark:text-indigo-300 ring-1 ring-zinc-200 dark:ring-zinc-700"
+                    title={task.assignee.full_name}
+                  >
+                    {task.assignee.full_name[0]}
+                  </div>
+                )
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </Draggable>
+  );
+};
+
