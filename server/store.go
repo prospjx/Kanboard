@@ -908,20 +908,24 @@ func (m *MemoryStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, 
 
 	for i := range m.tasks {
 		if m.tasks[i].ID == taskID && (m.tasks[i].UserID == userID || m.tasks[i].UserID == uuid.Nil) {
+			oldTask := m.tasks[i]
 			if req.ColumnID != nil {
 				m.tasks[i].ColumnID = *req.ColumnID
 			}
-			if req.Status != nil {
+			if req.Status != nil && *req.Status != oldTask.Status {
 				m.tasks[i].Status = *req.Status
+				m.logActivityInternal(userID, &taskID, oldTask.Title, "moved", fmt.Sprintf("Moved from %s → %s", oldTask.Status, *req.Status))
 			}
-			if req.Title != nil {
+			if req.Title != nil && *req.Title != oldTask.Title {
 				m.tasks[i].Title = *req.Title
+				m.logActivityInternal(userID, &taskID, *req.Title, "updated", fmt.Sprintf("Renamed task to %q", *req.Title))
 			}
 			if req.Description != nil {
 				m.tasks[i].Description = *req.Description
 			}
-			if req.Priority != nil {
+			if req.Priority != nil && *req.Priority != oldTask.Priority {
 				m.tasks[i].Priority = *req.Priority
+				m.logActivityInternal(userID, &taskID, oldTask.Title, "updated", fmt.Sprintf("Priority changed from %s to %s", oldTask.Priority, *req.Priority))
 			}
 			if req.DueDate != nil {
 				m.tasks[i].DueDate = req.DueDate
@@ -937,6 +941,7 @@ func (m *MemoryStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, 
 				if len(req.AssigneeIDs) > 0 && req.AssigneeID == nil {
 					m.tasks[i].AssigneeID = &req.AssigneeIDs[0]
 				}
+				m.logActivityInternal(userID, &taskID, oldTask.Title, "updated", fmt.Sprintf("Updated assignees (%d assigned)", len(req.AssigneeIDs)))
 			}
 			if req.Labels != nil {
 				labelsJSON, _ := json.Marshal(req.Labels)
@@ -969,12 +974,34 @@ func (m *MemoryStore) ReorderTask(ctx context.Context, userID uuid.UUID, req Reo
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	var destColTitle string
+	for _, c := range m.columns {
+		if c.ID == req.NewColumnID {
+			destColTitle = c.Title
+			break
+		}
+	}
+
 	for i := range m.tasks {
 		if m.tasks[i].ID == req.TaskID && (m.tasks[i].UserID == userID || m.tasks[i].UserID == uuid.Nil) {
+			oldColID := m.tasks[i].ColumnID
+			var oldColTitle string
+			for _, c := range m.columns {
+				if c.ID == oldColID {
+					oldColTitle = c.Title
+					break
+				}
+			}
+
 			m.tasks[i].ColumnID = req.NewColumnID
 			m.tasks[i].Position = req.NewPosition
 			m.tasks[i].UpdatedAt = time.Now()
-			m.logActivityInternal(userID, &req.TaskID, m.tasks[i].Title, "moved", fmt.Sprintf("Moved task %q", m.tasks[i].Title))
+
+			if oldColID != req.NewColumnID && destColTitle != "" {
+				m.logActivityInternal(userID, &req.TaskID, m.tasks[i].Title, "moved", fmt.Sprintf("Moved from %s → %s", oldColTitle, destColTitle))
+			} else {
+				m.logActivityInternal(userID, &req.TaskID, m.tasks[i].Title, "moved", fmt.Sprintf("Reordered within %s", destColTitle))
+			}
 			return nil
 		}
 	}

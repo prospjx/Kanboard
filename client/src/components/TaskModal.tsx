@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Task, Profile } from '../types';
+import type { Task, Profile, ActivityLog } from '../types';
 import {
   X,
   Calendar,
@@ -10,12 +10,14 @@ import {
   MessageSquare,
   Send,
   User,
-  Tag
+  Tag,
+  History,
 } from 'lucide-react';
 
 interface TaskModalProps {
   task: Task | null;
   profiles: Profile[];
+  activityLogs: ActivityLog[];
   onClose: () => void;
   onUpdate: (taskId: string, updates: Record<string, any>) => void;
   onDelete: (taskId: string) => void;
@@ -35,6 +37,7 @@ const PRIORITY_OPTIONS = [
 export const TaskModal: React.FC<TaskModalProps> = ({
   task,
   profiles,
+  activityLogs,
   onClose,
   onUpdate,
   onDelete,
@@ -45,6 +48,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 }) => {
   if (!task) return null;
 
+  const [activeTab, setActiveTab] = useState<'comments' | 'history'>('comments');
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
   const [priority, setPriority] = useState(task.priority);
@@ -251,60 +255,139 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               </form>
             </div>
 
-            {/* Comments Stream */}
+            {/* Activity, Comments & History Stream */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
-                <MessageSquare className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                  Activity & Comments ({(task.comments || []).length})
-                </span>
-              </div>
-
-              <div className="space-y-3 mb-4 max-h-48 overflow-y-auto pr-1">
-                {(task.comments || []).map((c) => (
-                  <div key={c.id} className="p-3 bg-zinc-50 dark:bg-zinc-800/80 rounded-xl text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {c.user?.avatar_url ? (
-                          <img
-                            src={c.user.avatar_url}
-                            alt={c.user.full_name}
-                            className="w-5 h-5 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-indigo-200 dark:bg-indigo-900 flex items-center justify-center text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                            {(c.user?.full_name || 'U')[0]}
-                          </div>
-                        )}
-                        <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                          {c.user?.full_name || 'Team Member'}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-zinc-400">
-                        {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-zinc-600 dark:text-zinc-300 pl-7">{c.content}</p>
-                  </div>
-                ))}
-              </div>
-
-              <form onSubmit={handleSendComment} className="flex gap-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Write a comment..."
-                  className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 text-zinc-900 dark:text-white"
-                />
+              {/* Tab Switcher */}
+              <div className="flex items-center gap-4 mb-3 border-b border-zinc-200 dark:border-zinc-800">
                 <button
-                  type="submit"
-                  className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl cursor-pointer"
-                  title="Send Comment"
+                  type="button"
+                  onClick={() => setActiveTab('comments')}
+                  className={`pb-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer border-b-2 ${
+                    activeTab === 'comments'
+                      ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+                  }`}
                 >
-                  <Send className="w-4 h-4" />
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Comments ({(task.comments || []).length})</span>
                 </button>
-              </form>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('history')}
+                  className={`pb-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer border-b-2 ${
+                    activeTab === 'history'
+                      ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>
+                    History ({activityLogs.filter((l) => l.task_id === task.id).length})
+                  </span>
+                </button>
+              </div>
+
+              {/* Comments Tab View */}
+              {activeTab === 'comments' && (
+                <div>
+                  <div className="space-y-3 mb-4 max-h-52 overflow-y-auto pr-1">
+                    {(task.comments || []).length === 0 ? (
+                      <div className="text-center py-6 text-zinc-400 text-xs">
+                        No comments yet. Start the conversation!
+                      </div>
+                    ) : (
+                      (task.comments || []).map((c) => (
+                        <div key={c.id} className="p-3 bg-zinc-50 dark:bg-zinc-800/80 rounded-xl text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {c.user?.avatar_url ? (
+                                <img
+                                  src={c.user.avatar_url}
+                                  alt={c.user.full_name}
+                                  className="w-5 h-5 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-indigo-200 dark:bg-indigo-900 flex items-center justify-center text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                                  {(c.user?.full_name || 'U')[0]}
+                                </div>
+                              )}
+                              <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                                {c.user?.full_name || 'Team Member'}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-zinc-400">
+                              {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-zinc-600 dark:text-zinc-300 pl-7">{c.content}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <form onSubmit={handleSendComment} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Write a comment..."
+                      className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 text-zinc-900 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl cursor-pointer"
+                      title="Send Comment"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* History / Timeline Tab View */}
+              {activeTab === 'history' && (
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                  {(() => {
+                    const taskLogs = activityLogs.filter((l) => l.task_id === task.id);
+                    if (taskLogs.length === 0) {
+                      return (
+                        <div className="text-center py-6 text-zinc-400 text-xs">
+                          No recorded activity for this task yet.
+                        </div>
+                      );
+                    }
+                    return taskLogs.map((log) => {
+                      const date = new Date(log.created_at);
+                      const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+                      let timeAgo = 'just now';
+                      if (diffSec >= 3600) {
+                        const hours = Math.floor(diffSec / 3600);
+                        timeAgo = `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+                      } else if (diffSec >= 60) {
+                        const mins = Math.floor(diffSec / 60);
+                        timeAgo = `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
+                      }
+
+                      return (
+                        <div key={log.id} className="flex items-start gap-3 text-xs p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
+                          <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5">
+                            <History className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-zinc-800 dark:text-zinc-200 font-medium">
+                              {log.details}
+                            </div>
+                            <div className="text-[10px] text-zinc-400 mt-0.5">
+                              {timeAgo} · {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
             </div>
 
           </div>

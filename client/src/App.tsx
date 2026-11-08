@@ -713,6 +713,7 @@ export function App() {
       <TaskModal
         task={selectedTask}
         profiles={profiles}
+        activityLogs={activityLogs}
         onClose={() => setSelectedTask(null)}
         onUpdate={handleUpdateTask}
         onDelete={handleDeleteTask}
