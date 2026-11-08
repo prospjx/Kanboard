@@ -135,10 +135,10 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
       {/* Composer (To Do / In-Card) & Ghost Add Button */}
       <div className="mt-2 pt-2 border-t border-black/5 dark:border-white/5">
         {isAddingCard ? (
-          /* Proper nesting: Outer card 12px (rounded-xl), Inner input 8px (rounded-lg) with active dot */
+          /* Proper nesting: Outer card 12px (rounded-xl), Inner input 8px (rounded-lg) with active dot and composer-expand animation */
           <form
             onSubmit={handleCreateCard}
-            className="p-3 bg-white dark:bg-zinc-800 rounded-xl border border-black/10 dark:border-white/10 shadow-sm space-y-2.5 animate-in fade-in zoom-in-95"
+            className="composer-expand p-3 bg-white dark:bg-zinc-800 rounded-xl border border-black/10 dark:border-white/10 shadow-sm space-y-2.5"
           >
             <div className="relative">
               <textarea
@@ -156,7 +156,7 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="submit"
-                className="px-3 py-1.5 bg-[#1A56DB] hover:bg-blue-700 text-white rounded-lg text-xs font-medium cursor-pointer shadow-xs transition-colors"
+                className="btn-hover-state px-3 py-1.5 bg-[#1A56DB] hover:bg-blue-700 text-white rounded-lg text-xs font-medium cursor-pointer shadow-xs"
               >
                 Add Card
               </button>
@@ -166,17 +166,17 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
                   setIsAddingCard(false);
                   setNewTaskTitle('');
                 }}
-                className="px-3 py-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-xs font-medium cursor-pointer"
+                className="btn-hover-state px-3 py-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-xs font-medium cursor-pointer rounded-lg"
               >
                 Cancel
               </button>
             </div>
           </form>
         ) : (
-          /* Ghost Add Button: Demoted to integrated dashed inline anchor maintaining whitespace */
+          /* Ghost Add Button with btn-hover-state micro-feedback */
           <button
             onClick={() => setIsAddingCard(true)}
-            className="w-full py-2 px-3 border border-dashed border-transparent hover:border-black/15 dark:hover:border-white/15 text-xs font-medium text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-white/80 dark:hover:bg-zinc-800/80 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            className="btn-hover-state w-full py-2 px-3 border border-dashed border-transparent hover:border-black/15 dark:hover:border-white/15 text-xs font-medium text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" /> Add a card
           </button>

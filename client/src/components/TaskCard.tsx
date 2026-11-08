@@ -71,7 +71,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={onClick}
-          className={`group bg-white dark:bg-zinc-800/90 border rounded-xl p-3.5 mb-2.5 transition-all shadow-xs hover:shadow-md cursor-pointer select-none ${
+          className={`kanban-card-drag group bg-white dark:bg-zinc-800/90 border rounded-xl p-3.5 mb-2.5 shadow-xs hover:shadow-md cursor-pointer select-none ${
             snapshot.isDragging
               ? 'ring-2 ring-indigo-500 shadow-xl border-indigo-300 dark:border-indigo-600 rotate-1'
               : 'border-zinc-200/80 dark:border-zinc-700/60 hover:border-indigo-300 dark:hover:border-indigo-700'

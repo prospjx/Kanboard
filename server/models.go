@@ -12,6 +12,7 @@ type Profile struct {
 	Email     string    `json:"email"`
 	FullName  string    `json:"full_name"`
 	AvatarURL string    `json:"avatar_url"`
+	Color     string    `json:"color,omitempty"`
 }
 
 type Column struct {
@@ -59,6 +60,8 @@ type Task struct {
 	UserID      uuid.UUID       `json:"user_id"`
 	AssigneeID  *uuid.UUID      `json:"assignee_id,omitempty"`
 	Assignee    *Profile        `json:"assignee,omitempty"`
+	Assignees   []Profile       `json:"assignees,omitempty"`
+	AssigneeIDs []uuid.UUID     `json:"assignee_ids,omitempty"`
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
 	Priority    string          `json:"priority"` // low, medium, high, urgent
