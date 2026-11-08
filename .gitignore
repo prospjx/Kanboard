@@ -1,0 +1,14 @@
+# Binaries
+server/*.exe
+server/*.exe~
+server/kanban-server
+
+# Node dependencies & build artifacts
+client/node_modules/
+client/dist/
+
+# Environments
+.env
+server/.env
+client/.env.local
+

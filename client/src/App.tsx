@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import type { Column, Task, Profile } from './types';
 import { api } from './lib/api';
+import { initializeGuestAuth } from './lib/supabase';
 import { ColumnView } from './components/ColumnView';
 import { TaskModal } from './components/TaskModal';
 import { AuthModal } from './components/AuthModal';
@@ -24,7 +25,7 @@ export function App() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>(
-    localStorage.getItem('kanban_user_email') || 'demo@kanban.dev'
+    localStorage.getItem('kanban_user_email') || 'Guest'
   );
 
   // Search and Filter states
@@ -69,7 +70,11 @@ export function App() {
   };
 
   useEffect(() => {
-    loadBoardData();
+    // Automatically set up guest session if not already logged in
+    initializeGuestAuth().then((guest) => {
+      setUserEmail(guest.email);
+      loadBoardData();
+    });
   }, []);
 
   // Drag and Drop Handler

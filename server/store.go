@@ -69,12 +69,13 @@ func (s *PostgresStore) GetProfiles(ctx context.Context) ([]Profile, error) {
 }
 
 func (s *PostgresStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Column, error) {
-	// 1. Fetch columns
+	// 1. Fetch columns owned by this user
 	colRows, err := s.pool.Query(ctx, `
 		SELECT id, user_id, title, position, created_at, updated_at 
 		FROM public.columns 
+		WHERE user_id = $1
 		ORDER BY position ASC
-	`)
+	`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +94,7 @@ func (s *PostgresStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Colum
 		columns = append(columns, c)
 	}
 
-	// If no columns exist yet for this board, seed default ones
+	// If no columns exist yet for this board/user, seed default ones for this user
 	if len(columns) == 0 {
 		defaultTitles := []string{"To Do", "In Progress", "In Review", "Done"}
 		for i, title := range defaultTitles {
@@ -109,7 +110,7 @@ func (s *PostgresStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Colum
 		}
 	}
 
-	// 2. Fetch tasks with assignees
+	// 2. Fetch only tasks owned by this user
 	taskRows, err := s.pool.Query(ctx, `
 		SELECT 
 			t.id, t.column_id, t.user_id, t.assignee_id, t.title, t.description, 
@@ -117,10 +118,11 @@ func (s *PostgresStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Colum
 			p.id, p.email, p.full_name, p.avatar_url
 		FROM public.tasks t
 		LEFT JOIN public.profiles p ON t.assignee_id = p.id
+		WHERE t.user_id = $1
 		ORDER BY t.position ASC
-	`)
+	`, userID)
 	if err != nil {
-		return columns, nil // Return columns even if task fetch fails or tables empty
+		return columns, nil
 	}
 	defer taskRows.Close()
 
@@ -366,8 +368,8 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID
 		argIdx++
 	}
 
-	query += fmt.Sprintf(` WHERE id = $%d RETURNING id, column_id, user_id, assignee_id, title, description, priority, due_date, position, labels, created_at, updated_at`, argIdx)
-	args = append(args, taskID)
+	query += fmt.Sprintf(` WHERE id = $%d AND user_id = $%d RETURNING id, column_id, user_id, assignee_id, title, description, priority, due_date, position, labels, created_at, updated_at`, argIdx, argIdx+1)
+	args = append(args, taskID, userID)
 
 	var t Task
 	err := s.pool.QueryRow(ctx, query, args...).Scan(
@@ -393,13 +395,13 @@ func (s *PostgresStore) ReorderTask(ctx context.Context, userID uuid.UUID, req R
 	_, err := s.pool.Exec(ctx, `
 		UPDATE public.tasks 
 		SET column_id = $1, position = $2, updated_at = NOW() 
-		WHERE id = $3
-	`, req.NewColumnID, req.NewPosition, req.TaskID)
+		WHERE id = $3 AND user_id = $4
+	`, req.NewColumnID, req.NewPosition, req.TaskID, userID)
 	return err
 }
 
 func (s *PostgresStore) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM public.tasks WHERE id = $1`, taskID)
+	_, err := s.pool.Exec(ctx, `DELETE FROM public.tasks WHERE id = $1 AND user_id = $2`, taskID, userID)
 	return err
 }
 
@@ -589,7 +591,8 @@ func (m *MemoryStore) GetBoard(ctx context.Context, userID uuid.UUID) ([]Column,
 	for i := range cols {
 		cols[i].Tasks = []Task{}
 		for _, t := range m.tasks {
-			if t.ColumnID == cols[i].ID {
+			// Per-user isolation in memory
+			if t.ColumnID == cols[i].ID && (t.UserID == userID || cols[i].UserID == userID) {
 				taskCopy := t
 				if taskCopy.AssigneeID != nil {
 					if p, exists := profileMap[*taskCopy.AssigneeID]; exists {
@@ -722,7 +725,7 @@ func (m *MemoryStore) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, 
 	defer m.mu.Unlock()
 
 	for i := range m.tasks {
-		if m.tasks[i].ID == taskID {
+		if m.tasks[i].ID == taskID && (m.tasks[i].UserID == userID || m.tasks[i].UserID == uuid.Nil) {
 			if req.ColumnID != nil {
 				m.tasks[i].ColumnID = *req.ColumnID
 			}
@@ -768,7 +771,7 @@ func (m *MemoryStore) ReorderTask(ctx context.Context, userID uuid.UUID, req Reo
 	defer m.mu.Unlock()
 
 	for i := range m.tasks {
-		if m.tasks[i].ID == req.TaskID {
+		if m.tasks[i].ID == req.TaskID && (m.tasks[i].UserID == userID || m.tasks[i].UserID == uuid.Nil) {
 			m.tasks[i].ColumnID = req.NewColumnID
 			m.tasks[i].Position = req.NewPosition
 			m.tasks[i].UpdatedAt = time.Now()
@@ -784,7 +787,7 @@ func (m *MemoryStore) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) 
 
 	var newTasks []Task
 	for _, t := range m.tasks {
-		if t.ID != taskID {
+		if !(t.ID == taskID && (t.UserID == userID || t.UserID == uuid.Nil)) {
 			newTasks = append(newTasks, t)
 		}
 	}
