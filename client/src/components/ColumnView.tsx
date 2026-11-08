@@ -33,12 +33,22 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
     setIsEditingTitle(false);
   };
 
-  const handleCreateCard = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateCard = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (newTaskTitle.trim()) {
       onAddTask(column.id, newTaskTitle.trim());
       setNewTaskTitle('');
       setIsAddingCard(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleCreateCard();
+    } else if (e.key === 'Escape') {
+      setIsAddingCard(false);
+      setNewTaskTitle('');
     }
   };
 
@@ -146,6 +156,7 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
                 rows={2}
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Summary"
                 className="w-full p-2.5 pr-6 bg-black/[0.02] dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded-lg text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:border-[#1A56DB] resize-none"
               />
